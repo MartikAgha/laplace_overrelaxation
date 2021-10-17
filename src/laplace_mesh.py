@@ -1,9 +1,8 @@
 from itertools import product
 
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib import cm
-from mpl_toolkits.mplot3d import Axes3D
+from mesh_plotter import MeshPlotter
+
 
 # Module used to simulate the 2-dimensional setup of a square coaxial cable cross
 # section. This is done using finite difference approximation and is done with
@@ -55,6 +54,11 @@ class LaplaceMesh:
         for i, j in product(range_x, range_y):
             self.__fixed_points[i, j] = True
             self.__point_dict[(i, j)] = V
+
+        self.__plotter = MeshPlotter(self)
+
+    def get_n_points(self):
+        return self.__npt_x, self.__npt_y
 
     def get_laplace_stencil(self, i, j, point_dict):
         """
@@ -198,8 +202,9 @@ class LaplaceMesh:
         for i, j in product(range(self.__npt_x), range(self.__npt_y)):
             potential_grid[i, j] = self.__point_dict[(i, j)]
         if plot:
-            plt.matshow(potential_grid)
-            plt.show()
+            self.__plotter.plot_potential(potential_grid)
+            # plt.matshow(potential_grid)
+            # plt.show()
         return potential_grid
 
     def get_electric_field(self, i, j, h, direction='x'):
@@ -223,7 +228,7 @@ class LaplaceMesh:
             return negative_gradient
         else:
             raise ValueError("Supply either 'x' or 'y' for the direction.")
-        
+
     def get_electric_field_grid(self, plot=False):
         """
         Creates a matrix to either visually plot the electric_field or use
@@ -245,14 +250,9 @@ class LaplaceMesh:
                 field_abs_grid[i, j] = np.linalg.norm([field_x_grid[i, j],
                                                        field_y_grid[i, j]])
         if plot:
-            x, y = range(self.__npt_x), range(self.__npt_y)
-            # Use arrows to show directions of the field.
-            # Swapped because of matrix row/colum geometry
-            plt.quiver(x, y, field_y_grid, field_x_grid)
-            plt.title("Electric Field Vector")
-            plt.matshow(field_abs_grid)
-            plt.title("Electric Field Magnitude")
-            plt.show()
+            self.__plotter.plot_electric_field(field_x_grid,
+                                               field_y_grid,
+                                               field_abs_grid)
         return field_abs_grid
                 
     def get_optimal_relaxation_factor(self, omega_range=None):
@@ -284,32 +284,31 @@ class LaplaceMesh:
         theoretical_value = 2*(1 - np.sqrt(1 - eta))/eta
         return theoretical_value
         
-    def profile(self, scaled=False):
+    def get_potential_profile(self, scaled=False, plot=True):
         """
         Displays the potential profile of the coaxial cable along the
         horizontal axis of symmetry.
         @param scaled: Scale values by the cable width.
         @return:
         """
-        potential = []
+        potential_profile = []
         if scaled:
             size = int(self.__npt_x)/2 - int(self.__ppcm*self.__bar_width)/2
             sample = np.arange(0, size)
             for i in sample:
-                potential.append(self.__point_dict[(i, int(self.__npt_y/2))])
-            plt.plot(sample/float(self.__ppcm*size - 1), potential)
-            plt.xlabel("Relative position along cable")
+                potential_profile.append(self.__point_dict[(i, int(self.__npt_y/2))])
+            x_axis = sample/float(self.__ppcm*size - 1)
         else:
             sample = np.arange(0, int(self.__npt_x))
             for i in sample:
-                potential.append(self.__point_dict[(i, int(self.__npt_y/2))])
-            positions = [sample[i]/float(self.__ppcm) - (self.__tube_width/2)
-                         for i in range(len(sample))]
-            plt.plot(positions, potential)
-            plt.xlabel("X position along cable cross-section (cm)")
-        plt.ylabel("Potential (Volts)")
-        plt.grid(b=True, which='both', axis='both', color='k')
-        plt.show()
+                potential_profile.append(self.__point_dict[(i, int(self.__npt_y/2))])
+            x_axis = [sample[i]/float(self.__ppcm) - (self.__tube_width/2)
+                      for i in range(len(sample))]
+        if plot:
+            self.__plotter.plot_potential_profile(x_axis,
+                                                  potential_profile,
+                                                  scaled=scaled)
+        return x_axis, potential_profile
 
     def reset_point_dictionary(self):
         """Resets all values of point dictionary to zero."""
@@ -317,29 +316,3 @@ class LaplaceMesh:
             if not self.__fixed_points[i, j]:
                 self.__point_dict[(i, j)] = 0
         
-    def visualise_3d(self, display='V'):
-        """
-        3-dimensional visualisation tool for electrostatic quantities:
-        @param display: if this is set to,'E' then shows the variation of
-                        electric field magnitude, else if 'V', displays
-                        the potential
-        @return:
-        """
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
-        x, y = np.meshgrid(range(self.__npt_x), range(self.__npt_y))
-        value = np.zeros((self.__npt_x, self.__npt_y))
-        for i, j in product(range(self.__npt_x), range(self.__npt_y)):
-            value[i, j] = self.__point_dict[(i, j)]
-        if display == 'V':
-            ax.plot_surface(y, x, value, rstride=1, cstride=1,
-                            cmap=cm.Spectral, linewidth=0, antialiased=False)
-        elif display == 'E':
-            ax.plot_surface(y, x, self.get_electric_field_grid(), rstride=1,
-                            cstride=1, cmap=cm.Spectral, linewidth=0,
-                            antialiased=False)
-        else:
-            raise Exception("'E' or 'V' must be inputted for display.")
-        ax.set_xlabel("x (mm)")
-        ax.set_ylabel("y (mm)")
-        ax.set_zlabel("V (V)" if display == 'V' else "E (V/cm)")

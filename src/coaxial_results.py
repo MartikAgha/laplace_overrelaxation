@@ -21,18 +21,20 @@ def suitable_mesh(width=16, precision=0.001):
     """
     points = []
     value = []
-    p=2
+    mesh_density = 2
     posterior = 200
-    while p < 15:
-        M = LaplaceMesh(width, width, ppcm=p)
-        M.solve_with_successive_over_relaxation()
-        posterior, prior = M.get_electric_field_grid()[M.__npoints_x / 4, M.__n_points_y / 2.], posterior
+    while mesh_density < 15:
+        laplace_mesh = LaplaceMesh(width, width, ppcm=mesh_density)
+        laplace_mesh.solve_with_successive_over_relaxation()
+        npx, npy = laplace_mesh.get_n_points()
+        new_posterior = laplace_mesh.get_electric_field_grid()[npx//4, npy//2]
+        posterior, prior = new_posterior, posterior
         value.append(posterior)
-        points.append(p)
-        print("points-per-centimetre = {}".format(p))
-        p += 1
+        points.append(mesh_density)
+        print("points-per-centimetre = {}".format(mesh_density))
+        mesh_density += 1
         if np.abs(float(prior-posterior)/prior) < precision:
-            print("Suitable Mesh Spacing = {}".format(p))
+            print("Suitable Mesh Spacing = {}".format(mesh_density))
             break 
     plt.plot(points, value)
     plt.xlabel("Points-per-centimetre (ppcm)")
@@ -44,20 +46,24 @@ def suitable_tol(width=16, ppcm=7, precision=0.001, plot=True):
     """This can also be used to show that required tolerance is independent of mesh spacing"""
     tolerances = []
     value = []
-    tol= -2
+    tol_power = -2
     posterior = 200
-    while tol > -14 :
-        M = LaplaceMesh(width, width, ppcm=ppcm)
-        M.solve_with_successive_over_relaxation(tolerance=10 ** (tol))
-        posterior, prior = M.get_electric_field_grid()[M.__npoints_x / 4., M.__n_points_y / 2.], posterior
+    while tol_power > -14 :
+        tol = 10**tol_power
+        laplace_mesh = LaplaceMesh(width, width, ppcm=ppcm)
+        laplace_mesh.solve_with_successive_over_relaxation(tolerance=tol)
+        npx, npy = laplace_mesh.get_n_points()
+        new_posterior = laplace_mesh.get_electric_field_grid()[npx//4, npy//2]
+        posterior, prior = new_posterior, posterior
         value.append(posterior)
-        tolerances.append(10**(tol))
-        print("Convergence tolerance = {}".format(10**(tol)))
-        tol -= 1
+        tolerances.append(tol)
+        print("Convergence tolerance = {}".format(tol))
+        tol_power -= 1
+        tol = 10**tol_power
         if np.abs(float(prior-posterior)/prior) < precision:
-            print("Suitable Tolerance = {}".format(10**(tol)))
+            print("Suitable Tolerance = {}".format(tol))
             break 
-    if plot == True:
+    if plot:
         plt.loglog(tolerances, value)
         plt.xlabel("Convergence Tolerance")
         plt.ylabel("Electric field value at (x, y) = (Lx/4, Ly/2)")
@@ -74,18 +80,20 @@ def iter_vs_ppcm(maximum=12):
     the data found to a power law curve and plots the idealised curve to the
     plot for comparison.
     """
-    point_density = np.arange(1, maximum)
+    mesh_densities = np.arange(1, maximum)
     iter_count = []
-    for P in point_density:
-        M = LaplaceMesh(6, 6, wbar = 2, ppcm = P, V = 10)
-        res = M.solve_with_jacobi()
-        print (P, res)
+    for mesh_density in mesh_densities:
+        laplace_mesh = LaplaceMesh(6, 6, wbar=2, ppcm=mesh_density, V=10)
+        res = laplace_mesh.solve_with_jacobi()
+        print(mesh_density, res)
         iter_count.append(res)
-    results = spo.curve_fit(fit_func, point_density, iter_count, (1, 1))
-    fit = [results[0][0]*x**results[0][1] for x in point_density]
-    plt.plot(point_density, iter_count, 'bo-', linewidth=1.5)
-    plt.plot(point_density, fit, 'r--', linewidth=3.5)
-    plt.legend(['Data', '{}(ppcm)^{}'.format(round(results[0][0], 2), round(results[0][1], 2))], loc='upper left')
+    results = spo.curve_fit(fit_func, mesh_densities, iter_count, (1, 1))
+    fit = [results[0][0]*x**results[0][1] for x in mesh_densities]
+    plt.plot(mesh_densities, iter_count, 'bo-', linewidth=1.5)
+    plt.plot(mesh_densities, fit, 'r--', linewidth=3.5)
+    plt.legend(['Data', '{}(ppcm)^{}'.format(round(results[0][0], 2),
+                                             round(results[0][1], 2))],
+               loc='upper left')
     plt.xlabel("Points-per-cm (ppcm)")
     plt.ylabel("Iterations required")
     plt.grid(b=True, which='both', axis='both', color='k')
@@ -97,20 +105,22 @@ def iter_vs_width(maximum=26):
     Uses the Gauss-Seidel method to determine the variation of iteration
     with the width of the outer tube, keeping the inner bar fixed.
     """
-    width = np.arange(6, maximum)
+    width_values = np.arange(6, maximum)
     iterations = []
-    for Wtube in width:
-        M = LaplaceMesh(Wtube, Wtube, wbar=2, ppcm=2, V=10)
-        res = M.solve_with_gauss_seidel()
-        print (Wtube, res)
+    for width in width_values:
+        laplace_mesh = LaplaceMesh(width, width, wbar=2, ppcm=2, V=10)
+        res = laplace_mesh.solve_with_gauss_seidel()
+        print(width, res)
         iterations.append(res)
-    results = spo.curve_fit(fit_func, width, iterations, (1, 1))
-    fit = [results[0][0]*x**results[0][1] for x in width]
-    plt.plot(width, iterations, 'bo-', linewidth=1.5)
-    plt.plot(width, fit, 'r--', linewidth=3.5)
+    results = spo.curve_fit(fit_func, width_values, iterations, (1, 1))
+    fit = [results[0][0]*x**results[0][1] for x in width_values]
+    plt.plot(width_values, iterations, 'bo-', linewidth=1.5)
+    plt.plot(width_values, fit, 'r--', linewidth=3.5)
     plt.xlabel("Tube width (cm)")
     plt.ylabel("Iterations until convergence")
-    plt.legend(['Data', '{}x^{}'.format(round(results[0][0], 2), round(results[0][1], 2))], loc='upper left')
+    plt.legend(['Data', '{}x^{}'.format(round(results[0][0], 2),
+                                        round(results[0][1], 2))],
+               loc='upper left')
     plt.grid(b=True, which='both', axis='both', color='k')
     plt.show()
 
@@ -128,29 +138,31 @@ def method_comparison():
     1 to 14. For each value of ppcm the number of iterations required to reach
     convergence is recorded (within a fractional tolerance of 1e-8).
     """
-    point_density = np.arange(1, 15)
-    Jacobi_count = []
-    GS_count = []
-    SOR_count = []
-    Theory_factor = []
-    for P in point_density:
-        print (P)
-        M = LaplaceMesh(6, 6, wbar = 2, ppcm = P, V = 10)
-        res = M.solve_with_jacobi()
-        Jacobi_count.append(res)
-        M = LaplaceMesh(6, 6, wbar = 2, ppcm = P, V = 10)
-        res = M.solve_with_gauss_seidel()
-        GS_count.append(res)
-        M = LaplaceMesh(6, 6, wbar = 2, ppcm = P, V = 10)
-        res = M.solve_with_successive_over_relaxation(omega= 1.5)
-        SOR_count.append(res)
-        M = LaplaceMesh(6, 6, wbar = 2, ppcm = P, V = 10)
-        res = M.solve_with_successive_over_relaxation()
-        Theory_factor.append(res)
-    plt.plot(point_density, Jacobi_count, 'g')
-    plt.plot(point_density, GS_count, 'b')
-    plt.plot(point_density, SOR_count, 'r')
-    plt.plot(point_density, Theory_factor, 'm')
+    mesh_densities = np.arange(1, 15)
+    jacobi_count = []
+    gauss_seidel_count = []
+    sor_count = []
+    sor_theory_count = []
+    for mesh_density in mesh_densities:
+        print(mesh_density)
+        laplace_mesh = LaplaceMesh(6, 6, wbar=2, ppcm=mesh_density, V=10)
+        jacobi_iter = laplace_mesh.solve_with_jacobi()
+        laplace_mesh = LaplaceMesh(6, 6, wbar = 2, ppcm = mesh_density, V = 10)
+        gauss_seidel_iter = laplace_mesh.solve_with_gauss_seidel()
+        laplace_mesh = LaplaceMesh(6, 6, wbar = 2, ppcm = mesh_density, V = 10)
+        sor_iter = laplace_mesh.solve_with_successive_over_relaxation(omega=1.5)
+        laplace_mesh = LaplaceMesh(6, 6, wbar = 2, ppcm = mesh_density, V = 10)
+        sor_theory_iter = laplace_mesh.solve_with_successive_over_relaxation()
+
+        jacobi_count.append(jacobi_iter)
+        gauss_seidel_count.append(gauss_seidel_iter)
+        sor_count.append(sor_iter)
+        sor_theory_count.append(sor_theory_iter)
+
+    plt.plot(mesh_densities, jacobi_count, 'g')
+    plt.plot(mesh_densities, gauss_seidel_count, 'b')
+    plt.plot(mesh_densities, sor_count, 'r')
+    plt.plot(mesh_densities, sor_theory_count, 'm')
     plt.legend(['Jacobi', 'Gauss Seidel', 'SOR W=1.5', 'SOR (~optimal W)'], loc='upper left')
     plt.xlabel("Points-per-centimetre (ppcm)")
     plt.ylabel("Iterations required")
@@ -164,18 +176,18 @@ def optimum_relaxation():
     At each value of points per centimetre, estimates optimum relaxation factor
     and plots, to determine relationship.
     """
-    P_count = np.arange(1, 8)
-    Opt = []
-    theory = []
-    for p in P_count:
-        M = LaplaceMesh(6, 6, ppcm=p)
-        W = M.get_optimal_relaxation_factor()
-        T = M.get_theoretical_relaxation_factor()
-        print (p, W, T)
-        Opt.append(W)
-        theory.append(T)
-    plt.plot(P_count, Opt)
-    plt.plot(P_count, theory)
+    mesh_densities = np.arange(1, 8)
+    optimal_factor_list = []
+    theory_factor_list = []
+    for mesh_density in mesh_densities:
+        laplace_mesh = LaplaceMesh(6, 6, ppcm=mesh_density)
+        optimal_factor = laplace_mesh.get_optimal_relaxation_factor()
+        theory_factor = laplace_mesh.get_theoretical_relaxation_factor()
+        print(mesh_density, optimal_factor, theory_factor)
+        optimal_factor_list.append(optimal_factor)
+        theory_factor_list.append(theory_factor)
+    plt.plot(mesh_densities, optimal_factor_list)
+    plt.plot(mesh_densities, theory_factor_list)
     plt.legend(['Numerical', 'Theoretical'], loc='lower right')
     plt.xlabel("Points-per-centimetre")
     plt.ylabel("Optimal Relaxation Factor")
@@ -189,10 +201,10 @@ def tube_variation():
     bar is varied.
     """
     for wtube in range(4, 80, 4):
-        M = LaplaceMesh(Lx=wtube, Ly=wtube, ppcm = 2)
-        M.solve_with_successive_over_relaxation()
+        laplace_mesh = LaplaceMesh(wtube, wtube, ppcm = 2)
+        laplace_mesh.solve_with_successive_over_relaxation()
         plt.figure(1)
-        M.profile(scaled = True)
+        laplace_mesh.get_potential_profile(scaled=True)
         plt.xlabel("Relative distance from tube to bar (cm)")
         plt.ylabel("Potential (V)")
         plt.grid(b=True, which='both', axis='both', color='k')
@@ -206,10 +218,10 @@ def profile_ensemble(sizes=[4, 35]):
     the physical problem.
     """
     for i in range(len(sizes)):
-        M = LaplaceMesh(sizes[i], sizes[i], ppcm=7)
-        M.solve_with_successive_over_relaxation()
+        laplace_mesh = LaplaceMesh(sizes[i], sizes[i], ppcm=7)
+        laplace_mesh.solve_with_successive_over_relaxation()
         plt.subplot(1, 2, i+1)
-        M.profile()
+        laplace_mesh.get_potential_profile()
         plt.title("Tube Width = {} cm".format(float(sizes[i])))
     plt.show()
 
