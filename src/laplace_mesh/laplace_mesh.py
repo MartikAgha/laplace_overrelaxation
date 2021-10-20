@@ -1,7 +1,7 @@
 from itertools import product
 
 import numpy as np
-from mesh_plotter import MeshPlotter
+from .mesh_plotter import MeshPlotter
 
 
 # Module used to simulate the 2-dimensional setup of a square coaxial cable cross

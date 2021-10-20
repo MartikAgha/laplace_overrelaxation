@@ -1,17 +1,24 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from laplace_mesh import *
 import scipy.optimize as spo
-"""
-Module containing functions which replicate and produce results obtained whilst
-investigating the features of the coaxial cable.
-"""
 
-def fit_func(x, A, b):
-    """Typical power law fitting function used for many components."""
-    return A*x**b
+from laplace_mesh.laplace_mesh import LaplaceMesh
 
-def suitable_mesh(width=16, precision=0.001):
+# Module containing functions which replicate and produce results obtained
+# whilst investigating the features of the coaxial cable.
+
+def power_law_fit(x, coeff, exponent):
+    """
+    Typical power law fitting function used for many components.
+    @param x: value
+    @param coeff: coefficient of power law
+    @param exponent: exponent of power law
+    @return:
+    """
+    power_law = coeff*x**exponent
+    return power_law
+
+def optimize_mesh_size(width=16, precision=0.001, max_mesh_density=15):
     """
     Experiment to determine a suitable mesh spacing to reflect the physical
     nature of the coaxial cable problem. The value of the field is expected to 
@@ -21,9 +28,11 @@ def suitable_mesh(width=16, precision=0.001):
     """
     points = []
     value = []
-    mesh_density = 2
+    # initial values
     posterior = 200
-    while mesh_density < 15:
+    mesh_density = 2
+
+    while mesh_density < max_mesh_density:
         laplace_mesh = LaplaceMesh(width, width, ppcm=mesh_density)
         laplace_mesh.solve_with_successive_over_relaxation()
         npx, npy = laplace_mesh.get_n_points()
@@ -35,20 +44,25 @@ def suitable_mesh(width=16, precision=0.001):
         mesh_density += 1
         if np.abs(float(prior-posterior)/prior) < precision:
             print("Suitable Mesh Spacing = {}".format(mesh_density))
-            break 
+            break
+
     plt.plot(points, value)
     plt.xlabel("Points-per-centimetre (ppcm)")
     plt.ylabel("Electric field value (V/cm) at x=Lx/4, y=Ly/2")
     plt.grid(b=True, which='both', axis='both', color = 'k')
     plt.show()
 
-def suitable_tol(width=16, ppcm=7, precision=0.001, plot=True):
+def optimize_tolerance(width=16, ppcm=7, precision=0.001,
+                       lowest_tol_power=-14, plot=True):
     """This can also be used to show that required tolerance is independent of mesh spacing"""
     tolerances = []
     value = []
+
+    # initial values
     tol_power = -2
     posterior = 200
-    while tol_power > -14 :
+
+    while tol_power > lowest_tol_power :
         tol = 10**tol_power
         laplace_mesh = LaplaceMesh(width, width, ppcm=ppcm)
         laplace_mesh.solve_with_successive_over_relaxation(tolerance=tol)
@@ -72,7 +86,7 @@ def suitable_tol(width=16, ppcm=7, precision=0.001, plot=True):
     else:
         return 10**(min(tolerances))
     
-def iter_vs_ppcm(maximum=12):
+def iter_vs_ppcm(max_mesh_density=12, width=6, wbar=2, potential=10):
     """
     Experiment B1.1 - Rate of Convergence against Mesh Density:
     Using the jacobi method, iterates to a converged solution for each value of
@@ -80,14 +94,15 @@ def iter_vs_ppcm(maximum=12):
     the data found to a power law curve and plots the idealised curve to the
     plot for comparison.
     """
-    mesh_densities = np.arange(1, maximum)
+    mesh_densities = np.arange(1, max_mesh_density)
     iter_count = []
     for mesh_density in mesh_densities:
-        laplace_mesh = LaplaceMesh(6, 6, wbar=2, ppcm=mesh_density, V=10)
+        laplace_mesh = LaplaceMesh(width, width, wbar=wbar,
+                                   ppcm=mesh_density, V=potential)
         res = laplace_mesh.solve_with_jacobi()
         print(mesh_density, res)
         iter_count.append(res)
-    results = spo.curve_fit(fit_func, mesh_densities, iter_count, (1, 1))
+    results = spo.curve_fit(power_law_fit, mesh_densities, iter_count, (1, 1))
     fit = [results[0][0]*x**results[0][1] for x in mesh_densities]
     plt.plot(mesh_densities, iter_count, 'bo-', linewidth=1.5)
     plt.plot(mesh_densities, fit, 'r--', linewidth=3.5)
@@ -99,20 +114,21 @@ def iter_vs_ppcm(maximum=12):
     plt.grid(b=True, which='both', axis='both', color='k')
     plt.show()
     
-def iter_vs_width(maximum=26):
+def iter_vs_width(min_width=6, max_width=26, wbar=2, ppcm=2, potential=10):
     """
     Experiment B1.2 - Variation of Iterations with Outer Tube Width:
     Uses the Gauss-Seidel method to determine the variation of iteration
     with the width of the outer tube, keeping the inner bar fixed.
     """
-    width_values = np.arange(6, maximum)
+    width_values = np.arange(min_width, max_width)
     iterations = []
     for width in width_values:
-        laplace_mesh = LaplaceMesh(width, width, wbar=2, ppcm=2, V=10)
+        laplace_mesh = LaplaceMesh(width, width, wbar=wbar,
+                                   ppcm=ppcm, V=potential)
         res = laplace_mesh.solve_with_gauss_seidel()
         print(width, res)
         iterations.append(res)
-    results = spo.curve_fit(fit_func, width_values, iterations, (1, 1))
+    results = spo.curve_fit(power_law_fit, width_values, iterations, (1, 1))
     fit = [results[0][0]*x**results[0][1] for x in width_values]
     plt.plot(width_values, iterations, 'bo-', linewidth=1.5)
     plt.plot(width_values, fit, 'r--', linewidth=3.5)
@@ -124,7 +140,7 @@ def iter_vs_width(maximum=26):
     plt.grid(b=True, which='both', axis='both', color='k')
     plt.show()
 
-def method_comparison():
+def method_comparison(max_mesh_density=15, width=6, wbar=2, potential=10):
     """
     Experiment B1.3 - Iterations vs. ppcm for Different Algorithms:
     For a 6cm X 6cm system, solves for the potential of the square coaxial cable
@@ -138,20 +154,21 @@ def method_comparison():
     1 to 14. For each value of ppcm the number of iterations required to reach
     convergence is recorded (within a fractional tolerance of 1e-8).
     """
-    mesh_densities = np.arange(1, 15)
+    mesh_densities = np.arange(1, max_mesh_density)
     jacobi_count = []
     gauss_seidel_count = []
     sor_count = []
     sor_theory_count = []
     for mesh_density in mesh_densities:
         print(mesh_density)
-        laplace_mesh = LaplaceMesh(6, 6, wbar=2, ppcm=mesh_density, V=10)
+        laplace_mesh = LaplaceMesh(width, width, wbar=wbar,
+                                   ppcm=mesh_density, V=potential)
         jacobi_iter = laplace_mesh.solve_with_jacobi()
-        laplace_mesh = LaplaceMesh(6, 6, wbar = 2, ppcm = mesh_density, V = 10)
+        laplace_mesh.reset_point_dictionary()
         gauss_seidel_iter = laplace_mesh.solve_with_gauss_seidel()
-        laplace_mesh = LaplaceMesh(6, 6, wbar = 2, ppcm = mesh_density, V = 10)
+        laplace_mesh.reset_point_dictionary()
         sor_iter = laplace_mesh.solve_with_successive_over_relaxation(omega=1.5)
-        laplace_mesh = LaplaceMesh(6, 6, wbar = 2, ppcm = mesh_density, V = 10)
+        laplace_mesh.reset_point_dictionary()
         sor_theory_iter = laplace_mesh.solve_with_successive_over_relaxation()
 
         jacobi_count.append(jacobi_iter)
@@ -169,7 +186,7 @@ def method_comparison():
     plt.grid(b=True, which='both', axis='both', color='k')
     plt.show()
     
-def optimum_relaxation():
+def optimum_relaxation(width=6):
     """
     Uses the Successive Over-Relaxation Method to solve for the potential of
     a 6cm X 6cm square coaxial cable for a variety of mesh point densities.
@@ -180,7 +197,7 @@ def optimum_relaxation():
     optimal_factor_list = []
     theory_factor_list = []
     for mesh_density in mesh_densities:
-        laplace_mesh = LaplaceMesh(6, 6, ppcm=mesh_density)
+        laplace_mesh = LaplaceMesh(width, width, ppcm=mesh_density)
         optimal_factor = laplace_mesh.get_optimal_relaxation_factor()
         theory_factor = laplace_mesh.get_theoretical_relaxation_factor()
         print(mesh_density, optimal_factor, theory_factor)
@@ -194,14 +211,14 @@ def optimum_relaxation():
     plt.grid(b=True, which='both', axis='both', color='k')
     plt.show()
     
-def tube_variation():
+def tube_variation(ppcm=2):
     """
     Plots a scaled potential profile of one side of the square coaxial cable
     showing the variation as the distance of the outer tube from the inner
     bar is varied.
     """
     for wtube in range(4, 80, 4):
-        laplace_mesh = LaplaceMesh(wtube, wtube, ppcm = 2)
+        laplace_mesh = LaplaceMesh(wtube, wtube, ppcm=ppcm)
         laplace_mesh.solve_with_successive_over_relaxation()
         plt.figure(1)
         laplace_mesh.get_potential_profile(scaled=True)
